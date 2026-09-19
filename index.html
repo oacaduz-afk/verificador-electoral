@@ -23,6 +23,13 @@ button.secondary{background:#667085}
 .upload-btn{display:flex;align-items:center;justify-content:center;min-height:58px;padding:10px 14px;border-radius:12px;font-weight:bold;cursor:pointer;text-align:center;border:1px solid #ccd2d8;background:#fff}
 .upload-btn input{display:none}
 .red-btn{border-color:#e99;background:#fff5f5}.green-btn{border-color:#9ad6a8;background:#f2fff4}.orange-btn{border-color:#edc77a;background:#fff9ed}
+.admin-box{margin-top:22px;padding:18px;border:1px solid #ccd2d8;border-radius:12px;background:#fafafa}
+.admin-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.admin-row input{padding:12px;border:1px solid #ccd2d8;border-radius:9px;font-size:16px;min-width:230px}
+.admin-btn{padding:12px 18px;border:0;border-radius:9px;background:#667085;color:#fff;font-weight:bold;cursor:pointer}
+.admin-status{margin-top:10px;font-weight:bold}
+.admin-content{display:none;margin-top:18px}
+.locked-note{font-size:13px;color:#667085}
 .update-msg{display:none;margin-top:14px;padding:12px;border-radius:10px;background:#eef7ee;border:1px solid #b8d9b8;font-weight:bold}
 @media(max-width:700px){.upload-grid{grid-template-columns:1fr}}
 </style>
@@ -47,21 +54,33 @@ button.secondary{background:#667085}
 <div class="filebox">🟢 Sin observar: <b id="cSinObservar"></b> registros</div>
 <div class="filebox">🟠 Sin llevar a Junta Electoral: <b id="cNoPresentados"></b> registros</div>
 <br>
-<h2>Actualizar listas</h2>
-<p class="small">Seleccioná el Excel nuevo y la aplicación reemplazará esa lista directamente en este navegador.</p>
-<div class="upload-grid">
-  <label class="upload-btn red-btn">📁 Cargar lista RECHAZADOS
-    <input id="fRechazados" type="file" accept=".xlsx,.xls">
-  </label>
-  <label class="upload-btn green-btn">📁 Cargar lista SIN OBSERVAR
-    <input id="fSinObservar" type="file" accept=".xlsx,.xls">
-  </label>
-  <label class="upload-btn orange-btn">📁 Cargar lista NO PRESENTADOS
-    <input id="fNoPresentados" type="file" accept=".xlsx,.xls">
-  </label>
+<h2>🔒 Administración</h2>
+<p class="locked-note">La consulta por DNI es pública. La actualización de las listas requiere contraseña.</p>
+<div class="admin-box">
+  <div class="admin-row">
+    <input id="adminPassword" type="password" placeholder="Contraseña de administrador" autocomplete="off">
+    <button class="admin-btn" onclick="desbloquearAdmin()">INGRESAR</button>
+  </div>
+  <div id="adminStatus" class="admin-status"></div>
 </div>
-<div id="actualizacion" class="update-msg"></div>
-<p class="small">Las listas cargadas quedan guardadas en este navegador para que no tengas que volver a seleccionarlas cada vez que abrís la aplicación.</p>
+
+<div id="adminContent" class="admin-content">
+  <h2>Actualizar listas</h2>
+  <p class="small">Seleccioná el Excel nuevo y la aplicación reemplazará esa lista directamente en este navegador.</p>
+  <div class="upload-grid">
+    <label class="upload-btn red-btn">📁 Cargar lista RECHAZADOS
+      <input id="fRechazados" type="file" accept=".xlsx,.xls">
+    </label>
+    <label class="upload-btn green-btn">📁 Cargar lista SIN OBSERVAR
+      <input id="fSinObservar" type="file" accept=".xlsx,.xls">
+    </label>
+    <label class="upload-btn orange-btn">📁 Cargar lista NO PRESENTADOS
+      <input id="fNoPresentados" type="file" accept=".xlsx,.xls">
+    </label>
+  </div>
+  <div id="actualizacion" class="update-msg"></div>
+  <p class="small">Las listas cargadas quedan guardadas en este navegador.</p>
+</div>
 </div>
 </div>
 
@@ -247,6 +266,28 @@ async function cargarListaDesdeExcel(tipo,file){
     mostrarActualizacion('⚠️ No se pudo leer el Excel. La lista anterior NO fue reemplazada.');
   }
 }
+
+const ADMIN_PASSWORD = 'Abel1234';
+
+function desbloquearAdmin(){
+  const input=document.getElementById('adminPassword');
+  const status=document.getElementById('adminStatus');
+  if(input.value === ADMIN_PASSWORD){
+    document.getElementById('adminContent').style.display='block';
+    status.textContent='✓ Acceso autorizado.';
+    status.style.color='green';
+    input.value='';
+  }else{
+    status.textContent='✗ Contraseña incorrecta.';
+    status.style.color='crimson';
+    input.value='';
+    input.focus();
+  }
+}
+
+document.getElementById('adminPassword').addEventListener('keydown',e=>{
+  if(e.key==='Enter') desbloquearAdmin();
+});
 
 document.getElementById('fRechazados').addEventListener('change',async e=>{
   const file=e.target.files[0];
