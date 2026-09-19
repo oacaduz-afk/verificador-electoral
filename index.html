@@ -132,43 +132,136 @@ function actualizarContadores(){
  document.getElementById('cNoPresentados').textContent=listas.no_presentados.length;
 }
 async function leerExcel(file){
- const data=await file.arrayBuffer();
- const wb=XLSX.read(data,{type:'array'});
- const ws=wb.Sheets[wb.SheetNames[0]];
- const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
- const out=[];
- for(const row of rows){
-   const apellido=String(row[5]??'').trim();
-   const nombre=String(row[6]??'').trim();
-   const raw=String(row[7]??'').trim();
-   const dni=normalizarDni(raw);
-   if(dni.length>=7 && !raw.includes('*')) out.push({dni,apellido,nombre});
- }
- return out;
+  if(typeof XLSX === 'undefined'){
+    throw new Error('No se pudo cargar el lector de Excel. Revisá la conexión a Internet.');
+  }
+
+  const data=await file.arrayBuffer();
+  const wb=XLSX.read(data,{type:'array',cellDates:false});
+  if(!wb.SheetNames.length) throw new Error('El archivo no contiene hojas.');
+
+  const ws=wb.Sheets[wb.SheetNames[0]];
+  const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+  if(!rows.length) throw new Error('La hoja está vacía.');
+
+  function cleanText(v){
+    return String(v ?? '').trim();
+  }
+
+  function dniNormalizado(v){
+    const raw=cleanText(v);
+    if(!raw || raw.includes('*')) return '';
+    const digits=raw.replace(/\D/g,'');
+    return (digits.length>=7 && digits.length<=9) ? digits : '';
+  }
+
+  function esEncabezado(v){
+    const t=cleanText(v).toUpperCase();
+    return ['DNI','DOCUMENTO','DOCUMENTO DE IDENTIDAD','APELLIDO','NOMBRE'].some(x=>t.includes(x));
+  }
+
+  // Primero intentamos detectar encabezados.
+  let headerIndex=-1, dniCol=-1, apellidoCol=-1, nombreCol=-1;
+  const limite=Math.min(rows.length,25);
+
+  for(let r=0;r<limite;r++){
+    const row=rows[r].map(cleanText);
+    for(let c=0;c<row.length;c++){
+      const t=row[c].toUpperCase();
+      if(t==='DNI' || t.includes('DOCUMENTO')) dniCol=c;
+      if(t==='APELLIDO') apellidoCol=c;
+      if(t==='NOMBRE') nombreCol=c;
+    }
+    if(dniCol>=0){ headerIndex=r; break; }
+  }
+
+  // Si no hay encabezados (como en tus planillas), detectamos la columna
+  // que contiene la mayor cantidad de DNI válidos.
+  if(dniCol<0){
+    let mejorCol=-1, mejorCantidad=0;
+    const maxCols=Math.max(...rows.map(r=>r.length),0);
+
+    for(let c=0;c<maxCols;c++){
+      let cantidad=0;
+      for(const row of rows){
+        if(dniNormalizado(row[c])) cantidad++;
+      }
+      if(cantidad>mejorCantidad){
+        mejorCantidad=cantidad;
+        mejorCol=c;
+      }
+    }
+    dniCol=mejorCol;
+
+    // En las planillas actuales, apellido y nombre son las dos columnas
+    // inmediatamente anteriores al DNI.
+    if(dniCol>=2){
+      apellidoCol=dniCol-2;
+      nombreCol=dniCol-1;
+    }
+  }
+
+  const out=[];
+  const vistos=new Set();
+
+  for(let r=headerIndex+1;r<rows.length;r++){
+    const row=rows[r] || [];
+    const dni=dniNormalizado(row[dniCol]);
+    if(!dni || vistos.has(dni)) continue;
+
+    let apellido=apellidoCol>=0 ? cleanText(row[apellidoCol]) : '';
+    let nombre=nombreCol>=0 ? cleanText(row[nombreCol]) : '';
+
+    if(apellido.includes('*')) apellido='';
+    if(nombre.includes('*')) nombre='';
+
+    out.push({dni,apellido,nombre});
+    vistos.add(dni);
+  }
+
+  return out;
 }
+
+async function cargarListaDesdeExcel(tipo,file){
+  try{
+    const nueva=await leerExcel(file);
+
+    // Protección: un Excel mal leído no puede borrar una lista válida.
+    if(nueva.length===0){
+      mostrarActualizacion('⚠️ No se encontraron DNIs válidos. La lista anterior NO fue reemplazada.');
+      return;
+    }
+
+    listas[tipo]=nueva;
+    guardarListas();
+    actualizarContadores();
+
+    const nombres={
+      rechazados:'RECHAZADOS',
+      sin_observar:'SIN OBSERVAR',
+      no_presentados:'NO PRESENTADOS'
+    };
+    mostrarActualizacion('✓ Lista '+nombres[tipo]+' actualizada: '+nueva.length+' registros.');
+  }catch(err){
+    console.error(err);
+    mostrarActualizacion('⚠️ No se pudo leer el Excel. La lista anterior NO fue reemplazada.');
+  }
+}
+
 document.getElementById('fRechazados').addEventListener('change',async e=>{
- if(e.target.files[0]){
-   listas.rechazados=await leerExcel(e.target.files[0]);
-   guardarListas(); actualizarContadores();
-   mostrarActualizacion('Lista RECHAZADOS actualizada: '+listas.rechazados.length+' registros.');
- }
- e.target.value='';
+  const file=e.target.files[0];
+  if(file) await cargarListaDesdeExcel('rechazados',file);
+  e.target.value='';
 });
 document.getElementById('fSinObservar').addEventListener('change',async e=>{
- if(e.target.files[0]){
-   listas.sin_observar=await leerExcel(e.target.files[0]);
-   guardarListas(); actualizarContadores();
-   mostrarActualizacion('Lista SIN OBSERVAR actualizada: '+listas.sin_observar.length+' registros.');
- }
- e.target.value='';
+  const file=e.target.files[0];
+  if(file) await cargarListaDesdeExcel('sin_observar',file);
+  e.target.value='';
 });
 document.getElementById('fNoPresentados').addEventListener('change',async e=>{
- if(e.target.files[0]){
-   listas.no_presentados=await leerExcel(e.target.files[0]);
-   guardarListas(); actualizarContadores();
-   mostrarActualizacion('Lista NO PRESENTADOS actualizada: '+listas.no_presentados.length+' registros.');
- }
- e.target.value='';
+  const file=e.target.files[0];
+  if(file) await cargarListaDesdeExcel('no_presentados',file);
+  e.target.value='';
 });
 actualizarContadores();
 document.getElementById('dni').focus();
